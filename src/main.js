@@ -215,6 +215,34 @@ const actions = {
     }
   },
 
+  destroyThread: async () => {
+    const thread = threads.find((t) => t.id === selectedId)
+    if (!thread) return
+    // Belt and braces alongside the HUD's own disabled state: a thread that so much as
+    // looks alive is not this button's business, however it got clicked.
+    const status = statusFor(thread)
+    if (status !== 'idle' && status !== 'sleeping') {
+      hud.toast('Only an idle or dormant thread can be destroyed', 'err')
+      return
+    }
+    if (!colony.destroyThread(thread.id)) return
+    select(null, {})
+    try {
+      const res = await archiveThread(thread, true)
+      state.archived = [...new Set([...state.archived, thread.id])]
+      state.archivedAt = { ...state.archivedAt, [thread.id]: Date.now() }
+      queueSave()
+      applyThreads(threads)
+      hud.toast(
+        res.harnessRecord === false
+          ? `Destroyed here (no ${thread.harnessName || 'harness'} record for it)`
+          : 'Destroyed — the pad is clear'
+      )
+    } catch (err) {
+      hud.toast(err.message || 'Could not destroy that pad', 'err')
+    }
+  },
+
   uiVisibility: (visible) => colony.setUiVisible(visible),
 
   // The card's bar is about the *thread*, not about how much of its building has risen —

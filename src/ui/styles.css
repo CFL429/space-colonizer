@@ -131,6 +131,12 @@ body {
   transform: scale(0.96);
 }
 
+.btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+  pointer-events: none;
+}
+
 .btn.icon {
   padding: 0;
   width: 34px;
@@ -149,6 +155,17 @@ body {
 
 .btn.ghost {
   background: transparent;
+}
+
+.btn.danger {
+  background: var(--red);
+  border-color: var(--red);
+  color: #fff;
+}
+
+.btn.danger:hover {
+  background: #e05a5a;
+  border-color: #e05a5a;
 }
 
 .btn[aria-pressed='true'] {
@@ -618,6 +635,11 @@ body {
   height: 34px;
 }
 
+.thread-pop .pair .btn.icon {
+  flex: none;
+  width: 34px;
+}
+
 .progress {
   height: 5px;
   border-radius: 3px;
@@ -946,12 +968,6 @@ body {
 .side .pair .btn {
   flex: 1;
   min-width: 0;
-}
-
-.side .btn:disabled {
-  opacity: 0.4;
-  cursor: default;
-  pointer-events: none;
 }
 
 .side .threads-head {

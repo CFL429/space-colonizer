@@ -13,6 +13,7 @@ import {
   PLOT_CELL,
 } from '../world/plots.js'
 import { createBuilding, buildingUniforms, Scaffolds } from '../world/buildings.js'
+import { Meteors } from '../world/meteor.js'
 import { Ship } from '../world/ship.js'
 import { Astronauts } from '../agents/astronauts.js'
 import { Indicators, BADGE } from '../agents/indicators.js'
@@ -139,6 +140,7 @@ export class Colony {
     this.astronauts.world = this._world()
     this.indicators = new Indicators(scene, settings, Math.max(64, settings.get('maxAgents')))
     this.particles = new Particles(scene, settings)
+    this.meteors = new Meteors(scene)
     this.scaffolds = new Scaffolds(scene, 320)
     this.nav = new Navigation()
     this.astronauts.setNavigation(this.nav)
@@ -315,9 +317,11 @@ export class Colony {
     }
 
     // Anything that dropped out of the scan — archived, or a transcript that vanished —
-    // takes its building down and walks its astronaut back to the ship.
+    // takes its building down and walks its astronaut back to the ship. A building already
+    // mid-meteor-strike is left alone: `destroyThread` owns its removal from here on, and
+    // the impact callback is what actually takes it out.
     for (const [id, entry] of this.buildings) {
-      if (!seenBuildings.has(id)) this._removeBuilding(id, entry)
+      if (!seenBuildings.has(id) && !entry.destroying) this._removeBuilding(id, entry)
     }
 
     this.threads = new Map(live.map((t) => [t.id, t]))
@@ -676,6 +680,7 @@ export class Colony {
     this._growBuildings(dt)
     this.astronauts.update(dt, elapsed)
     this.astronauts.updateRings(elapsed)
+    this.meteors.update(dt)
     this.indicators.update(this.astronauts.agents, elapsed, (a) => this._badgeFor(a))
     this._emit(dt, elapsed)
     this.particles.ambient(dt, this.camera, this.planet)
@@ -811,6 +816,40 @@ export class Colony {
     return this.astronauts.byId.get(id)
   }
 
+  /**
+   * Drop a meteor on a thread's building — the "destroy" action. Unlike an ordinary archive,
+   * which walks the astronaut home and sinks the building, this ends both of them where they
+   * stand: the astronaut is held here rather than sent home, the building is flagged so the
+   * next roster sync leaves it alone, and the actual removal happens on impact.
+   *
+   * Returns false if there is nothing here to destroy, or a strike is already inbound.
+   */
+  destroyThread(id) {
+    const entry = this.buildings.get(id)
+    if (!entry || entry.destroying) return false
+    entry.destroying = true
+    this.astronauts.markDoomed(id)
+    this.meteors.strike(entry.mesh.position.clone(), () => this._onMeteorImpact(id))
+    return true
+  }
+
+  _onMeteorImpact(id) {
+    const entry = this.buildings.get(id)
+    if (entry) {
+      const p = entry.mesh.position
+      this.particles.impact(p.x, p.y + 0.3, p.z, this.groundAt(p.x, p.z))
+      this.worldGroup.remove(entry.mesh)
+      entry.mesh.geometry.dispose()
+      entry.mesh.material.dispose()
+      entry.mesh.customDepthMaterial?.dispose()
+      this.buildings.delete(id)
+    }
+    this.astronauts.destroy(id)
+    // The plot the pad sat on is free the instant the crater is — a new astronaut should
+    // never route around rubble that is no longer there.
+    this._rebuildNavigation()
+  }
+
   setUiVisible(visible) {
     this.uiVisible = visible
     this._syncLabels()
@@ -827,6 +866,7 @@ export class Colony {
     this.astronauts.dispose()
     this.indicators.dispose()
     this.particles.dispose()
+    this.meteors.dispose()
     this.scaffolds.dispose()
     disposeTree(this.worldGroup)
     disposeTree(this.plotGroup)

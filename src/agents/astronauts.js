@@ -471,7 +471,7 @@ export class Astronauts {
     }
 
     for (const agent of this.agents) {
-      if (!seen.has(agent.id) && agent.state !== 'leaving') this._sendHome(agent)
+      if (!seen.has(agent.id) && agent.state !== 'leaving' && !agent.doomed) this._sendHome(agent)
     }
     return this.agents.length
   }
@@ -535,6 +535,9 @@ export class Astronauts {
       index: -1,
       walkAmp: 0,
       screen: new THREE.Vector3(), // filled by the picker each frame
+      // Set by `markDoomed` — a meteor is already inbound for this one, so the roster sync
+      // below must not also send it walking home.
+      doomed: false,
     }
     this._applyStatus(agent, entry.status)
     this.agents.push(agent)
@@ -597,6 +600,20 @@ export class Astronauts {
   remove(id) {
     const agent = this.byId.get(id)
     if (agent) this._sendHome(agent)
+  }
+
+  /** A meteor is already inbound for this one — hold it here rather than sending it home. */
+  markDoomed(id) {
+    const agent = this.byId.get(id)
+    if (agent) agent.doomed = true
+  }
+
+  /** Struck. Gone outright, mid-scene — the impact already did the leaving animation's job. */
+  destroy(id) {
+    const agent = this.byId.get(id)
+    if (!agent) return
+    agent.state = 'gone'
+    agent.scale = 0
   }
 
   // ── per-frame simulation ────────────────────────────────────────────────────────────

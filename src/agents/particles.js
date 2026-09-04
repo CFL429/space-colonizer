@@ -289,6 +289,56 @@ export class Particles {
     }
   }
 
+  /** Rubble and embers erupting from a meteor strike. `ground` is the surface it hit. */
+  impact(x, y, z, ground = 0) {
+    if (!this.enabled) return
+    const full = this.settings.get('particles') === 'full'
+
+    const rubble = full ? 22 : 10
+    for (let i = 0; i < rubble; i++) {
+      const a = Math.random() * Math.PI * 2
+      const s = 1.2 + Math.random() * 3.2
+      this.dust.spawn(
+        x,
+        y,
+        z,
+        Math.cos(a) * s,
+        1.6 + Math.random() * 2.4,
+        Math.sin(a) * s,
+        0.42 + Math.random() * 0.1,
+        0.36 + Math.random() * 0.08,
+        0.3,
+        0.16 + Math.random() * 0.16,
+        0.7 + Math.random() * 0.6,
+        1.8,
+        1,
+        ground
+      )
+    }
+
+    const embers = full ? 16 : 7
+    for (let i = 0; i < embers; i++) {
+      const a = Math.random() * Math.PI * 2
+      const s = 1.4 + Math.random() * 3
+      this.glow.spawn(
+        x,
+        y + 0.2,
+        z,
+        Math.cos(a) * s,
+        2.2 + Math.random() * 2.6,
+        Math.sin(a) * s,
+        2.6,
+        1.1,
+        0.4,
+        0.06 + Math.random() * 0.06,
+        0.5 + Math.random() * 0.5,
+        1.2,
+        1,
+        ground
+      )
+    }
+  }
+
   /** Thruster wash when the ship is used. */
   thruster(x, y, z) {
     if (!this.enabled) return
