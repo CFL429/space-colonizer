@@ -128,7 +128,7 @@ const DEFAULTS = {
   // Look
   exposure: 1.0,
   bloomStrength: 0.25,
-  tiltShiftStrength: 0.4, // 0..1 — share of the effect's full blur radius (2% of frame height)
+  tiltShiftStrength: 0.2, // 0..1 — share of the effect's full blur radius (2% of frame height)
   tiltShiftAngle: 0, // degrees — 0 keeps the sharp band horizontal
   iblIntensity: 1.0,
   fov: 38,
@@ -139,6 +139,11 @@ const DEFAULTS = {
   showFps: false,
   showLabels: true,
   reducedMotion: false,
+
+  // Economy — tokens are the colony's currency, paid out to an astronaut as its thread
+  // actually spends them. The budget is the only number here with no "right" value: it is
+  // whatever allowance you want to watch it against.
+  tokenBudget: 1_000_000_000,
 }
 
 /** Keys whose change forces a full rebuild of the world (terrain, scatter, sky). */

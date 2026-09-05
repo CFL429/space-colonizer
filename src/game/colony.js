@@ -18,6 +18,7 @@ import { Ship } from '../world/ship.js'
 import { Astronauts } from '../agents/astronauts.js'
 import { Indicators, BADGE } from '../agents/indicators.js'
 import { Particles } from '../agents/particles.js'
+import { PayPopups } from '../agents/payouts.js'
 import { Navigation } from '../agents/navigation.js'
 
 /**
@@ -141,6 +142,7 @@ export class Colony {
     this.indicators = new Indicators(scene, settings, Math.max(64, settings.get('maxAgents')))
     this.particles = new Particles(scene, settings)
     this.meteors = new Meteors(scene)
+    this.payouts = new PayPopups(scene)
     this.scaffolds = new Scaffolds(scene, 320)
     this.nav = new Navigation()
     this.astronauts.setNavigation(this.nav)
@@ -681,6 +683,7 @@ export class Colony {
     this.astronauts.update(dt, elapsed)
     this.astronauts.updateRings(elapsed)
     this.meteors.update(dt)
+    this.payouts.update(dt)
     this.indicators.update(this.astronauts.agents, elapsed, (a) => this._badgeFor(a))
     this._emit(dt, elapsed)
     this.particles.ambient(dt, this.camera, this.planet)
@@ -816,6 +819,13 @@ export class Colony {
     return this.astronauts.byId.get(id)
   }
 
+  /** A thread spent tokens since the last poll — pop the amount over its astronaut's head,
+   *  if it still has one standing. */
+  pay(id, amount) {
+    const agent = this.astronauts.byId.get(id)
+    if (agent) this.payouts.spawn(agent.pos, amount)
+  }
+
   /**
    * Drop a meteor on a thread's building — the "destroy" action. Unlike an ordinary archive,
    * which walks the astronaut home and sinks the building, this ends both of them where they
@@ -867,6 +877,7 @@ export class Colony {
     this.indicators.dispose()
     this.particles.dispose()
     this.meteors.dispose()
+    this.payouts.dispose()
     this.scaffolds.dispose()
     disposeTree(this.worldGroup)
     disposeTree(this.plotGroup)
