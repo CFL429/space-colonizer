@@ -625,6 +625,19 @@ export class Plot {
     return out.set(this.center.x + s.x, DECK_TOP, this.center.z + s.z)
   }
 
+  /** Recolour the deck tint, border and lamps in place — no rebuild, so a colour change
+   *  never disturbs the buildings or crew already standing here. */
+  setAccent(accent) {
+    this.accent = accent
+    this.deck.material.color.set(accent).offsetHSL(0, -0.38, 0).multiplyScalar(0.9)
+    if (this.borderMaterial) {
+      this.borderMaterial.color.set(accent)
+      this.borderMaterial.emissive.set(accent)
+    }
+    this._lampBase.set(accent)
+    this.lampMaterial.color.set(accent)
+  }
+
   /** Night lighting, plus a pulse on the border when this plot holds something urgent. */
   setNight(night, urgent, elapsed) {
     if (this.borderMaterial) {

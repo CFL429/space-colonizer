@@ -285,6 +285,15 @@ const actions = {
 
   uiVisibility: (visible) => colony.setUiVisible(visible),
 
+  setProjectAccent: (name, accent) => {
+    colony.setProjectAccent(name, accent)
+    // `legendProjects` is a snapshot taken at the last poll — patch it too, or the sidebar
+    // list keeps showing the old colour until the next one lands.
+    const entry = legendProjects.find((p) => p.name === name)
+    if (entry) entry.accent = accent
+    syncProject()
+  },
+
   // The card's bar is about the *thread*, not about how much of its building has risen —
   // those were the same number while construction was drawn by burying the structure.
   progressFor: (id) => {

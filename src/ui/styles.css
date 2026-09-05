@@ -1208,6 +1208,38 @@ body {
   flex: none;
 }
 
+.side .who .swatch-pick {
+  position: relative;
+  width: 15px;
+  height: 15px;
+  border-radius: 5px;
+  flex: none;
+  cursor: pointer;
+}
+
+.side .who .swatch-pick .swatch {
+  width: 100%;
+  height: 100%;
+  border-radius: 5px;
+  box-shadow: 0 0 9px currentColor;
+}
+
+.side .who .swatch-pick:hover .swatch {
+  outline: 2px solid rgba(255, 255, 255, 0.4);
+  outline-offset: 2px;
+}
+
+.side .who .swatch-pick input[type='color'] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  border: none;
+  padding: 0;
+}
+
 .side .who .text {
   flex: 1;
   min-width: 0;

@@ -20,6 +20,7 @@ import { Indicators, BADGE } from '../agents/indicators.js'
 import { Particles } from '../agents/particles.js'
 import { PayPopups } from '../agents/payouts.js'
 import { Navigation } from '../agents/navigation.js'
+import { loadAccentOverrides, saveAccentOverrides } from './accents.js'
 
 /**
  * The colony: everything that turns a list of agent threads into a place.
@@ -131,6 +132,8 @@ export class Colony {
     this.buildings = new Map()
     this.threads = new Map()
     this.usedAccents = new Set()
+    /** Colours you picked yourself, by repo name — kept ahead of the auto-picked palette. */
+    this.accentOverrides = loadAccentOverrides()
 
     this.worldGroup = new THREE.Group()
     this.worldGroup.name = 'world'
@@ -418,8 +421,14 @@ export class Colony {
     return terrainHeight(x, z, this.planet)
   }
 
-  /** A stable colour per repo, probing forward on a collision so no two plots match. */
+  /** A stable colour per repo: your own pick if you made one, else the palette, probing
+   *  forward on a collision so no two auto-picked plots match. */
   _pickAccent(name) {
+    const chosen = this.accentOverrides.get(name)
+    if (chosen != null) {
+      this.usedAccents.add(chosen)
+      return chosen
+    }
     const start = hashString(name) % PLOT_PALETTE.length
     for (let i = 0; i < PLOT_PALETTE.length; i++) {
       const accent = PLOT_PALETTE[(start + i) % PLOT_PALETTE.length]
@@ -429,6 +438,39 @@ export class Colony {
       }
     }
     return PLOT_PALETTE[start]
+  }
+
+  /**
+   * Repaint one repo, on the spot — the deck kerb, its lamps, its name plate and every
+   * building already standing on it, not just the next one built. Kept in `accentOverrides`
+   * so it survives a reload and outranks the auto-picked palette from then on.
+   */
+  setProjectAccent(name, accent) {
+    accent = Math.round(accent) & 0xffffff
+    if (this.accentOverrides.get(name) === accent) return
+    this.accentOverrides.set(name, accent)
+    saveAccentOverrides(this.accentOverrides)
+
+    const plot = this.plots.get(name)
+    if (!plot) return
+    this.usedAccents.delete(plot.accent)
+    plot.setAccent(accent)
+    this.usedAccents.add(accent)
+
+    if (plot.label) {
+      this.labelGroup.remove(plot.label)
+      plot.label.userData.dispose?.()
+    }
+    const label = createLabel(name, accent)
+    label.position.set(plot.labelAnchor.x, 3.2, plot.labelAnchor.z)
+    plot.label = label
+    this.labelGroup.add(label)
+
+    for (const entry of this.buildings.values()) {
+      if (entry.plot !== plot.id) continue
+      entry.accent = accent
+      entry.mesh.userData.uniforms.uAccent.value.set(accent)
+    }
   }
 
   _syncBuilding(thread, plot, index) {

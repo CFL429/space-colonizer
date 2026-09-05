@@ -446,6 +446,9 @@ export class Hud {
     on('#btn-reveal', 'click', () => this.actions.revealProject?.())
     on('#btn-copy-path', 'click', () => this.actions.copyProjectPath?.())
     on('#btn-locate', 'click', () => this.actions.focusProject?.(this.project?.name))
+    on('#input-accent', 'input', (e) => {
+      if (this.project) this.actions.setProjectAccent?.(this.project.name, parseInt(e.target.value.slice(1), 16))
+    })
     on('#btn-close-project', 'click', () => this.actions.closeProject?.())
     on('.help', 'click', (e) => {
       if (e.target === this.$('.help')) this.toggleHelp(false)
@@ -678,6 +681,7 @@ export class Hud {
     const swatch = this.$('.side .who .swatch')
     swatch.style.background = hex(project.accent)
     swatch.style.color = hex(project.accent) // the halo is `currentColor`
+    this.$('#input-accent').value = hex(project.accent)
     this.$('.side .name').textContent = project.name
     const path = this.$('.side .path')
     path.textContent = project.path ? shortPath(project.path) : 'folder unknown'
@@ -1160,7 +1164,10 @@ const TEMPLATE = `
     <div class="project-detail">
       <button class="btn ghost back" id="btn-close-project" title="Back to every repo (Esc)">${ICON.back} All repos</button>
       <div class="who">
-        <i class="swatch"></i>
+        <label class="swatch-pick" title="Change this repo's colour">
+          <i class="swatch"></i>
+          <input type="color" id="input-accent" aria-label="Repo colour" />
+        </label>
         <div class="text">
           <div class="name"></div>
           <div class="path"></div>
