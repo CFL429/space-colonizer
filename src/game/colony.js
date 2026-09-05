@@ -142,7 +142,7 @@ export class Colony {
     this.indicators = new Indicators(scene, settings, Math.max(64, settings.get('maxAgents')))
     this.particles = new Particles(scene, settings)
     this.meteors = new Meteors(scene)
-    this.payouts = new PayPopups(scene)
+    this.payouts = new PayPopups(scene, camera)
     this.scaffolds = new Scaffolds(scene, 320)
     this.nav = new Navigation()
     this.astronauts.setNavigation(this.nav)

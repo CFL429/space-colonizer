@@ -10,17 +10,31 @@ import * as THREE from 'three'
 const RISE = 1.1
 const LIFE = 1.8
 
+/**
+ * Where the status badge's own bottom edge and screen-space size live, in `agents/indicators.js`
+ * — a payout has to clear the badge at whatever zoom the badge happens to be drawn at, not just
+ * at the distance someone tested it at. A badge holds a near-constant *screen* size, so its
+ * world-space height grows with camera distance; mirroring that formula here (with the bigger
+ * "urgent" badge size, since a payout can land on any status) is what keeps the popup above it
+ * whether the camera is pulled in close or right out.
+ */
+const BADGE_HEAD_CLEAR = 1.42
+const BADGE_URGENT_SIZE = 0.166
+const CLEARANCE = 0.3
+
 const FORMAT = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 })
 /** Compact like the wallet's own readout — a raw token count is not a headline. */
 export const formatTokens = (n) => FORMAT.format(n)
 
 export class PayPopups {
-  constructor(scene) {
+  constructor(scene, camera) {
     this.scene = scene
+    this.camera = camera
     this.group = new THREE.Group()
     this.group.name = 'pay-popups'
     scene.add(this.group)
     this.active = []
+    this._view = new THREE.Vector3()
   }
 
   /** `worldPos` is read once, at spawn — the popup does not track a moving astronaut. */
@@ -28,7 +42,9 @@ export class PayPopups {
     // A burst of polls landing at once should not turn into a runaway mesh count.
     if (this.active.length > 24) return
     const mesh = buildPopup(`+${formatTokens(amount)}`)
-    mesh.position.set(worldPos.x, worldPos.y + 2.15, worldPos.z)
+    const dist = -this._view.copy(worldPos).applyMatrix4(this.camera.matrixWorldInverse).z
+    const badgeTop = BADGE_HEAD_CLEAR + BADGE_URGENT_SIZE * (2.0 + Math.max(0, dist) * 0.22)
+    mesh.position.set(worldPos.x, worldPos.y + badgeTop + CLEARANCE, worldPos.z)
     this.group.add(mesh)
     this.active.push({ mesh, t: 0, baseY: mesh.position.y })
   }
