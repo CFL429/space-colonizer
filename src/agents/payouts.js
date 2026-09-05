@@ -8,7 +8,7 @@ import * as THREE from 'three'
  */
 
 const RISE = 1.1
-const LIFE = 1.4
+const LIFE = 1.8
 
 const FORMAT = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 })
 /** Compact like the wallet's own readout — a raw token count is not a headline. */
@@ -28,7 +28,7 @@ export class PayPopups {
     // A burst of polls landing at once should not turn into a runaway mesh count.
     if (this.active.length > 24) return
     const mesh = buildPopup(`+${formatTokens(amount)}`)
-    mesh.position.set(worldPos.x, worldPos.y + 1.7, worldPos.z)
+    mesh.position.set(worldPos.x, worldPos.y + 2.15, worldPos.z)
     this.group.add(mesh)
     this.active.push({ mesh, t: 0, baseY: mesh.position.y })
   }
@@ -102,7 +102,7 @@ function buildPopup(label) {
   texture.magFilter = THREE.LinearFilter
   texture.anisotropy = 4
 
-  const height = 0.5
+  const height = 0.62
   const geo = new THREE.PlaneGeometry(height * (w / h), height)
   const mat = new THREE.MeshBasicMaterial({
     map: texture,
