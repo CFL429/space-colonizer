@@ -14,7 +14,7 @@ account, and the only thing it ever writes back is a single archive flag.
 ## Run it
 
 ```bash
-npm install && npm run dev
+cd PATH_TO_"space-colonizer"_FOLDER && npm install && npm run dev
 ```
 
 `npm run dev` is the whole thing: the API lives inside the Vite dev server, so there is no
