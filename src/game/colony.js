@@ -143,7 +143,7 @@ export class Colony {
     this.astronauts.world = this._world()
     this.indicators = new Indicators(scene, settings, Math.max(64, settings.get('maxAgents')))
     this.particles = new Particles(scene, settings)
-    this.payouts = new PayPopups(scene, camera)
+    this.payouts = new PayPopups(scene)
     this.scaffolds = new Scaffolds(scene, 320)
     this.nav = new Navigation()
     this.astronauts.setNavigation(this.nav)
@@ -734,8 +734,18 @@ export class Colony {
     for (const [id, entry] of this.buildings) {
       // A running thread's site creeps upward while you watch it.
       if (!entry.retiring && this._isLive(id)) entry.target = Math.min(1, entry.target + LIVE_GROWTH * dt)
-      const next = THREE.MathUtils.damp(entry.progress, entry.target, 1.8, dt)
-      if (Math.abs(next - entry.progress) > 0.0005) {
+      // damp() only ever approaches its target — the gap shrinks fast enough that the
+      // per-frame change eventually rounds down under the write-skip threshold below,
+      // which would otherwise freeze a building a hair short of finished forever rather
+      // than ever actually calling it done. Snapping the last stretch is what lets it
+      // (or a retiring one heading for zero) actually get there.
+      const closeEnough = Math.abs(entry.target - entry.progress) < 0.02
+      const next = closeEnough ? entry.target : THREE.MathUtils.damp(entry.progress, entry.target, 1.8, dt)
+      // The snap to `target` always commits — it is a deliberate one-time jump, not a
+      // diminishing delta — but only while it actually changes something: once a building
+      // is already sitting exactly on `target`, `next` stops differing from `progress` and
+      // this goes back to costing nothing every frame, same as before.
+      if (next !== entry.progress && (closeEnough || Math.abs(next - entry.progress) > 0.0005)) {
         entry.progress = next
         entry.mesh.userData.setProgress(next)
       }
@@ -755,6 +765,9 @@ export class Colony {
   }
 
   _badgeFor(agent) {
+    // A payout popup rises through exactly where the badge sits — give it the spot to
+    // itself rather than have "+1.2K" fight a badge for the same few pixels.
+    if (this.payouts.isActive(agent.id)) return BADGE.none
     if (agent.state === 'spawning') return BADGE.spawning
     if (agent.state === 'leaving') return BADGE.leaving
     // Badges only appear once an astronaut has actually reached its post — a stream of
@@ -829,10 +842,14 @@ export class Colony {
   _updateScaffolds() {
     const sites = []
     for (const [id, entry] of this.buildings) {
-      // Scaffolding says a thread is running here — the README's own promise. It used to be
-      // gated on the building being unfinished as well, which was fine while "unfinished"
-      // was most of them and useless the moment buildings stopped standing in a hole.
-      if (entry.progress <= 0.03) continue
+      // Scaffolding marks active construction — a site still rising, not just a thread that
+      // happens to be running. A finished building reads as finished even while its thread
+      // keeps going: scaffolding would say "under construction" about something that plainly
+      // is not.
+      // 0.999, not 1: `damp()` only approaches its target, and the reveal shader already
+      // treats 0.999 as "done" for its own construction-line glow — matching that keeps
+      // scaffolding from outliving every other sign a building has finished rising.
+      if (entry.progress <= 0.03 || entry.progress >= 0.999) continue
       if (!this._isActive(id)) continue
       const p = entry.mesh.position
       sites.push({
@@ -860,7 +877,7 @@ export class Colony {
    *  if it still has one standing. */
   pay(id, amount) {
     const agent = this.astronauts.byId.get(id)
-    if (agent) this.payouts.spawn(agent.pos, amount)
+    if (agent) this.payouts.spawn(id, agent.pos, amount)
   }
 
   setUiVisible(visible) {
