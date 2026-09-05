@@ -140,6 +140,10 @@ const DEFAULTS = {
   showLabels: true,
   reducedMotion: false,
 
+  // Test environment — while on, fake threads from `game/testenv.js` stand in for every
+  // real one rather than alongside them: one colony, never a mix of the genuine and the fake.
+  testEnvEnabled: false,
+
   // Economy — tokens are the colony's currency, paid out to an astronaut as its thread
   // actually spends them. The budget is the only number here with no "right" value: it is
   // whatever allowance you want to watch it against.

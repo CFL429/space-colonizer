@@ -2,6 +2,7 @@ import { PRESETS, PLANETS_ORDER } from './hud-data.js'
 import { PLANETS } from '../world/planet.js'
 import { TIMES } from '../world/sky.js'
 import { STATUS_LABEL } from '../game/colony.js'
+import { TEST_MODELS, TEST_STATUSES } from '../game/testenv.js'
 import { FACE, FRAME_COLS, FRAME_ROWS } from '../agents/faces.js'
 
 /**
@@ -251,6 +252,53 @@ export class Hud {
       )
     )
     body.appendChild(economy)
+
+    // Test environment — one or more fake platforms, each with its own crew, standing in
+    // for the real scan while switched on. Spawning, paying and destroying a test astronaut
+    // runs the exact same mechanics a real one does, so a UI change can be checked without
+    // waiting for something real to land in the right state.
+    const test = group('Test environment')
+    const blurb = document.createElement('p')
+    blurb.className = 'test-blurb'
+    blurb.textContent =
+      'Simulate one or more fake platforms, each with its own crew. While the switch below is on, they stand in for every real thread rather than alongside them.'
+    test.appendChild(blurb)
+
+    test.appendChild(
+      this._toggle(
+        'Simulate test environment',
+        'testEnvEnabled',
+        'On: the colony is built entirely from the environments below. Off: they are still here, just not shown.'
+      )
+    )
+
+    const addEnvRow = document.createElement('div')
+    addEnvRow.className = 'row test-add-env'
+    const addEnvBtn = mkBtn('+ New environment', () => this.actions.testAddEnv?.())
+    addEnvBtn.classList.add('primary')
+    addEnvRow.appendChild(addEnvBtn)
+    test.appendChild(addEnvRow)
+
+    this._testEnvList = document.createElement('div')
+    this._testEnvList.className = 'test-env-list'
+    test.appendChild(this._testEnvList)
+    this.setTestEnvironments([])
+
+    const dialogRow = document.createElement('div')
+    dialogRow.className = 'row test-dialogs'
+    dialogRow.append(
+      mkBtn('Toast', () => this.actions.testToast?.('')),
+      mkBtn('Error toast', () => this.actions.testToast?.('err')),
+      mkBtn('Help sheet', () => this.actions.testHelp?.()),
+      mkBtn('Receipts sheet', () => this.actions.testReceipts?.())
+    )
+    test.appendChild(dialogRow)
+
+    const clearBtn = mkBtn('Clear everything', () => this.actions.testClearAll?.())
+    clearBtn.classList.add('danger', 'test-clear')
+    test.appendChild(clearBtn)
+
+    body.appendChild(test)
   }
 
   _row(label, hint) {
@@ -457,6 +505,85 @@ export class Hud {
       </div>`
       )
       .join('')
+  }
+
+  /**
+   * The test-environment group's own list — every fake platform currently defined, each
+   * with the crew standing on it. `envs` is `[{ id, name, threads }, ...]`.
+   */
+  setTestEnvironments(envs) {
+    const wrap = this._testEnvList
+    if (!wrap) return
+    if (!envs.length) {
+      wrap.innerHTML = `<p class="empty">No test environments yet — add one above.</p>`
+      return
+    }
+    wrap.innerHTML = ''
+    for (const env of envs) {
+      wrap.appendChild(this._buildTestEnvCard(env))
+    }
+  }
+
+  _buildTestEnvCard(env) {
+    const card = document.createElement('div')
+    card.className = 'test-env'
+
+    const head = document.createElement('div')
+    head.className = 'test-env-head'
+    const nameInput = document.createElement('input')
+    nameInput.type = 'text'
+    nameInput.className = 'test-env-name'
+    nameInput.value = env.name
+    nameInput.spellcheck = false
+    nameInput.addEventListener('change', () => this.actions.testRenameEnv?.(env.id, nameInput.value.trim()))
+    const count = document.createElement('span')
+    count.className = 'count'
+    count.textContent = String(env.threads.length)
+    const removeEnvBtn = iconBtn(ICON.close, 'Remove this environment and everyone on it', () =>
+      this.actions.testRemoveEnv?.(env.id)
+    )
+    head.append(nameInput, count, removeEnvBtn)
+    card.appendChild(head)
+
+    const spawnRow = document.createElement('div')
+    spawnRow.className = 'row test-spawn'
+    const modelSel = selectEl(TEST_MODELS)
+    const statusSel = selectEl(TEST_STATUSES)
+    const spawnBtn = mkBtn('Spawn', () =>
+      this.actions.testSpawn?.({ envId: env.id, model: modelSel.value, status: statusSel.value })
+    )
+    spawnBtn.classList.add('primary')
+    spawnRow.append(modelSel, statusSel, spawnBtn)
+    card.appendChild(spawnRow)
+
+    const list = document.createElement('div')
+    list.className = 'test-list'
+    if (!env.threads.length) {
+      list.innerHTML = `<p class="empty">No agents yet — spawn one above.</p>`
+    } else {
+      for (const t of env.threads) list.appendChild(this._buildTestAgentRow(t))
+    }
+    card.appendChild(list)
+
+    return card
+  }
+
+  _buildTestAgentRow(t) {
+    const row = document.createElement('div')
+    row.className = 'test-row'
+    const info = document.createElement('div')
+    info.className = 'info'
+    info.innerHTML =
+      `<span class="t">${escapeHtml(t.title)}</span>` +
+      `<span class="tags">` +
+      `<span class="tag">${escapeHtml(STATUS_LABEL[t.testStatus] || t.testStatus)}</span>` +
+      (t.model ? `<span class="tag">${escapeHtml(shortModel(t.model))}</span>` : '') +
+      `</span>`
+    const payBtn = iconBtn(ICON.coin, 'Pay a random amount', () => this.actions.testPay?.(t.id))
+    const removeBtn = iconBtn(ICON.meteor, 'Meteor-strike this pad', () => this.actions.testRemove?.(t.id))
+    removeBtn.classList.add('danger')
+    row.append(info, payBtn, removeBtn)
+    return row
   }
 
   setStats(stats) {
@@ -847,6 +974,37 @@ function chips(items, current, onPick, registry) {
     },
   })
   return wrap
+}
+
+function mkBtn(label, onClick) {
+  const b = document.createElement('button')
+  b.type = 'button'
+  b.className = 'btn'
+  b.textContent = label
+  b.addEventListener('click', onClick)
+  return b
+}
+
+function iconBtn(svg, title, onClick) {
+  const b = document.createElement('button')
+  b.type = 'button'
+  b.className = 'btn icon ghost'
+  b.title = title
+  b.innerHTML = svg
+  b.addEventListener('click', onClick)
+  return b
+}
+
+function selectEl(options) {
+  const sel = document.createElement('select')
+  sel.className = 'select'
+  for (const [value, label] of options) {
+    const o = document.createElement('option')
+    o.value = value
+    o.textContent = label
+    sel.appendChild(o)
+  }
+  return sel
 }
 
 const hex = (n) => '#' + (n >>> 0).toString(16).padStart(6, '0').slice(-6)

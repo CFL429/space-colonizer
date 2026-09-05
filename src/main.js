@@ -18,6 +18,18 @@ import {
   newSession,
   revealFolder,
 } from './game/api.js'
+import {
+  addEnvironment,
+  renameEnvironment,
+  removeEnvironment,
+  listEnvironments,
+  spawnTest,
+  payTest,
+  removeTest,
+  listEnvThreads,
+  listAllTest,
+  clearAllTest,
+} from './game/testenv.js'
 
 /**
  * Boot and the outer game loop.
@@ -49,6 +61,12 @@ const colony = new Colony(engine.scene, settings, engine.camera, engine.renderer
 
 let state = { archived: [], archivedAt: {}, opened: [], plots: {}, seen: {} }
 let threads = []
+/** The last real scan on its own, so a test-environment change can be re-merged with it
+ *  without waiting for the next poll. */
+let scannedThreads = []
+/** Test astronauts mid meteor-strike: watched every frame so the fake thread is dropped for
+ *  good the instant its building is actually gone, rather than on a timer that might race it. */
+const pendingTestDestroy = new Set()
 /** Last legend built for the bottom bar, kept so the open zone's chip can light up between polls. */
 let legendProjects = []
 /** The zone layout as last written to the colony file, so an unchanged map is not re-saved. */
@@ -204,6 +222,16 @@ const actions = {
   archiveThread: async () => {
     const thread = threads.find((t) => t.id === selectedId)
     if (!thread) return
+    // A test astronaut has no harness record to archive against — walk it home in the
+    // panel's own bookkeeping instead of posting a fake ref at the real API.
+    if (thread.__test) {
+      removeTest(thread.id)
+      select(null, {})
+      refreshTestEnv()
+      hud.toast('Archived — heading home (test astronaut, nothing real to update)')
+      colony.ship.ping()
+      return
+    }
     try {
       const res = await archiveThread(thread, true)
       state.archived = [...new Set([...state.archived, thread.id])]
@@ -225,6 +253,11 @@ const actions = {
   destroyThread: async () => {
     const thread = threads.find((t) => t.id === selectedId)
     if (!thread) return
+    if (thread.__test) {
+      actions.testRemove(thread.id)
+      select(null, {})
+      return
+    }
     // Belt and braces alongside the HUD's own disabled state: a thread that so much as
     // looks alive is not this button's business, however it got clicked.
     const status = statusFor(thread)
@@ -258,6 +291,74 @@ const actions = {
     const thread = threads.find((t) => t.id === id)
     return thread ? transcriptProgress(thread) : 0
   },
+
+  // ── test environment ──────────────────────────────────────────────────────────────
+
+  testAddEnv: () => {
+    addEnvironment()
+    refreshTestEnv()
+  },
+
+  testRenameEnv: (id, name) => {
+    renameEnvironment(id, name)
+    refreshTestEnv()
+  },
+
+  /** Drops a whole fake platform and everyone standing on it — an immediate teardown, not
+   *  one meteor per astronaut, the same way clearing everything works below. */
+  testRemoveEnv: (id) => {
+    removeEnvironment(id)
+    refreshTestEnv()
+  },
+
+  testSpawn: (opts) => {
+    spawnTest(opts)
+    refreshTestEnv()
+  },
+
+  testPay: (id) => {
+    if (payTest(id) != null) refreshTestEnv()
+  },
+
+  /** Meteor-strike a test pad exactly like a real destroy, if it is standing; otherwise
+   *  there is nothing to watch, so it is just dropped. */
+  testRemove: (id) => {
+    if (colony.destroyThread(id)) pendingTestDestroy.add(id)
+    else {
+      removeTest(id)
+      refreshTestEnv()
+    }
+  },
+
+  testClearAll: () => {
+    pendingTestDestroy.clear()
+    clearAllTest()
+    refreshTestEnv()
+  },
+
+  testToast: (kind) =>
+    hud.toast(
+      kind === 'err' ? 'This is what an error toast looks like.' : 'This is what a regular toast looks like.',
+      kind
+    ),
+
+  testHelp: () => hud.toggleHelp(true),
+  testReceipts: () => hud.toggleReceipts(true),
+}
+
+/**
+ * What actually feeds the colony: the real scan, or the test environment's own roster —
+ * never both. Switching the toggle is meant to *replace* the colony, not add a second crew
+ * standing beside the first.
+ */
+function mergedThreads() {
+  return settings.get('testEnvEnabled') ? listAllTest() : scannedThreads
+}
+
+/** After any test-environment change: rebuild the roster and refresh its own list in the panel. */
+function refreshTestEnv() {
+  applyThreads(mergedThreads())
+  hud.setTestEnvironments(listEnvironments().map((env) => ({ ...env, threads: listEnvThreads(env.id) })))
 }
 
 const hud = new Hud(app, settings, actions)
@@ -641,7 +742,8 @@ async function poll() {
   polling = true
   try {
     const res = await fetchThreads()
-    applyThreads(res.threads || [])
+    scannedThreads = res.threads || []
+    applyThreads(mergedThreads())
     hud.removeBoot()
   } catch (err) {
     hud.toast(err.message || 'Could not reach the thread scanner', 'err')
@@ -720,6 +822,9 @@ settings.onChange((changed, scope) => {
   if (changed.has('showFps')) hud.syncSettings()
   if (changed.has('maxAgents')) applyThreads(threads)
   if (changed.has('tokenBudget')) applyCurrency(threads)
+  // Flip the switch and the colony changes crews immediately, rather than waiting for the
+  // next poll to notice.
+  if (changed.has('testEnvEnabled')) applyThreads(mergedThreads())
 })
 
 // ── frame ─────────────────────────────────────────────────────────────────────────────
@@ -730,6 +835,17 @@ engine.add({
     colony.update(dt, elapsed, rig.target)
     // Whatever the camera is orbiting is what should be in focus.
     engine.setFocusDistance(rig.distance)
+
+    // A test pad's meteor lands on the world's own clock, not on any poll — catch the
+    // moment its building is actually gone so the fake thread does not outlive it.
+    if (pendingTestDestroy.size) {
+      for (const id of pendingTestDestroy) {
+        if (colony.buildings.has(id)) continue
+        pendingTestDestroy.delete(id)
+        removeTest(id)
+        refreshTestEnv()
+      }
+    }
 
     if (selectedId) {
       hud.updateAvatar(colony.astronauts.faceTexture.image)
