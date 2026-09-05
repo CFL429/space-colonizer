@@ -370,6 +370,26 @@ body {
   outline: 2px solid var(--accent);
 }
 
+/* number */
+.number {
+  width: 118px;
+  height: 30px;
+  padding: 0 11px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-align: right;
+  flex: none;
+  pointer-events: auto;
+}
+
+.number:focus-visible {
+  outline: 2px solid var(--accent);
+}
+
 /* slider */
 .slider {
   -webkit-appearance: none;
@@ -784,6 +804,51 @@ body {
 }
 .stat.idle {
   color: #b6b5be;
+}
+
+/* ── wallet pill ─────────────────────────────────────────────────────────────────── */
+
+.wallet {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 38px;
+  padding: 0 15px;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+  color: inherit;
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  flex: none;
+  transition: background 140ms ease;
+  pointer-events: auto;
+}
+
+.wallet:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.wallet svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  color: #e6c67f;
+}
+
+.wallet .amt {
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.wallet .lbl {
+  color: var(--muted);
+}
+
+.wallet.overspent .amt {
+  color: var(--red);
 }
 
 /* ── the two panes: every repo, or the one you picked ───────────────────────────── */
@@ -1238,6 +1303,150 @@ kbd {
   font-size: 11px;
   font-weight: 700;
   flex: none;
+}
+
+/* ── receipts ────────────────────────────────────────────────────────────────────── */
+
+.receipts {
+  position: absolute;
+  inset: 0;
+  display: none;
+  place-items: center;
+  background: rgba(6, 7, 11, 0.72);
+  backdrop-filter: blur(6px);
+  pointer-events: auto;
+}
+
+.receipts.open {
+  display: grid;
+}
+
+.receipts .sheet {
+  width: min(480px, calc(100vw - 40px));
+  max-height: min(640px, calc(100vh - 60px));
+  padding: 22px 24px;
+  display: flex;
+  flex-direction: column;
+}
+
+.receipts header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.receipts h2 {
+  margin: 0;
+  font-size: 17px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.receipts h2 svg {
+  width: 18px;
+  height: 18px;
+  color: #e6c67f;
+}
+
+.receipts p.sub {
+  margin: 0 0 16px;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.wallet-summary {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  flex: none;
+}
+
+.wallet-summary .cell {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line);
+}
+
+.wallet-summary .cell.remaining {
+  border-color: rgba(230, 198, 127, 0.35);
+}
+
+.wallet-summary .n {
+  font-size: 15px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.wallet-summary .n.over {
+  color: var(--red);
+}
+
+.wallet-summary .lbl {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.receipt-list {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  margin: 0 -8px;
+  padding: 0 8px;
+}
+
+.receipt-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.receipt-row .swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex: none;
+}
+
+.receipt-row .info {
+  flex: 1;
+  min-width: 0;
+}
+
+.receipt-row .why {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.receipt-row .meta {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.receipt-row .amt {
+  flex: none;
+  font-size: 13px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  color: #e6c67f;
+}
+
+.receipt-list .empty {
+  margin: 30px 0;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
 }
 
 /* ── hint pill ───────────────────────────────────────────────────────────────────── */

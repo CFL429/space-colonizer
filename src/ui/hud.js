@@ -44,6 +44,7 @@ const ICON = {
   locate: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="7.6"/><path d="M12 1.8v2.6M12 19.6v2.6M1.8 12h2.6M19.6 12h2.6"/></svg>`,
   orbit: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="4"/><ellipse cx="12" cy="12" rx="10.2" ry="4.6" transform="rotate(-24 12 12)"/><circle cx="21" cy="8.2" r="1.5" fill="currentColor" stroke="none"/></svg>`,
   meteor: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="14.5" r="5"/><path d="M12 2.6v3.4M5.9 5.9l2.2 2.5M18.1 5.9l-2.2 2.5"/></svg>`,
+  coin: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="8.2"/><path d="M9.3 14.6c.4 1 1.4 1.6 2.7 1.6 1.7 0 2.8-.8 2.8-2 0-1.1-1-1.6-2.8-2-1.8-.4-2.8-.9-2.8-2 0-1.2 1.1-2 2.8-2 1.3 0 2.3.6 2.7 1.6"/><path d="M12 5.6v1.1M12 17.3v1.1"/></svg>`,
 }
 
 /**
@@ -238,6 +239,18 @@ export class Hud {
       this._toggle('Show FPS', 'showFps')
     )
     body.appendChild(view)
+
+    // Economy.
+    const economy = group('Economy')
+    economy.append(
+      this._number(
+        'Token budget',
+        'tokenBudget',
+        { min: 0, step: 1_000_000 },
+        'What every astronaut has been paid comes out of this. Change it any time — the receipts page tracks what has actually gone out against it.'
+      )
+    )
+    body.appendChild(economy)
   }
 
   _row(label, hint) {
@@ -285,6 +298,29 @@ export class Hud {
       sync: () => {
         sel.value = String(this.settings.get(key))
         row.classList.toggle('overridden', this.settings.isOverridden(key))
+      },
+    })
+    return row
+  }
+
+  /** A free-form number, for a value with no sane slider range — a budget you type in
+   *  rather than one you drag toward. */
+  _number(label, key, { min, step } = {}, hint) {
+    const row = this._row(label, hint)
+    const input = document.createElement('input')
+    input.type = 'number'
+    input.className = 'number'
+    if (min !== undefined) input.min = min
+    if (step !== undefined) input.step = step
+    input.addEventListener('change', () => {
+      const v = Number(input.value)
+      this.settings.set(key, Number.isFinite(v) ? v : 0)
+    })
+    row.appendChild(input)
+    this.controls.push({
+      el: row,
+      sync: () => {
+        if (document.activeElement !== input) input.value = String(this.settings.get(key))
       },
     })
     return row
@@ -359,6 +395,13 @@ export class Hud {
     this.$('.help .sheet').addEventListener('click', (e) => e.stopPropagation())
     on('#btn-help-close', 'click', () => this.toggleHelp(false))
 
+    on('#btn-wallet', 'click', () => this.toggleReceipts())
+    on('#btn-close-receipts', 'click', () => this.toggleReceipts(false))
+    on('.receipts', 'click', (e) => {
+      if (e.target === this.$('.receipts')) this.toggleReceipts(false)
+    })
+    this.$('.receipts .sheet').addEventListener('click', (e) => e.stopPropagation())
+
     this.settings.onChange(() => this.syncSettings())
   }
 
@@ -367,6 +410,53 @@ export class Hud {
   syncSettings() {
     for (const c of this.controls) c.sync()
     this.$('.fps').classList.toggle('on', Boolean(this.settings.get('showFps')))
+  }
+
+  /** The wallet pill and the receipts sheet's own summary row — cheap, so this runs every
+   *  poll regardless of whether the sheet is open. */
+  setWallet(remaining, budget, spent) {
+    const key = `${remaining}:${budget}:${spent}`
+    if (this._last.wallet === key) return
+    this._last.wallet = key
+
+    const wallet = this.$('#btn-wallet')
+    wallet.querySelector('.amt').textContent = signedTokens(remaining)
+    wallet.classList.toggle('overspent', remaining < 0)
+
+    this.$('#receipts-spent').textContent = formatTokens(spent)
+    this.$('#receipts-budget').textContent = formatTokens(budget)
+    const remainingEl = this.$('#receipts-remaining')
+    remainingEl.textContent = signedTokens(remaining)
+    remainingEl.classList.toggle('over', remaining < 0)
+  }
+
+  /** `list` is every receipt across every thread, newest first — cheap to hold onto, and
+   *  actually drawn only while the sheet is open (see `toggleReceipts`). */
+  setReceipts(list) {
+    this._receipts = list
+    if (this.$('.receipts').classList.contains('open')) this._renderReceipts()
+  }
+
+  _renderReceipts() {
+    const wrap = this.$('.receipt-list')
+    const list = this._receipts || []
+    if (!list.length) {
+      wrap.innerHTML = `<p class="empty">Nothing spent yet — an astronaut is paid the moment its thread does.</p>`
+      return
+    }
+    wrap.innerHTML = list
+      .map(
+        (r) => `
+      <div class="receipt-row">
+        <i class="swatch" style="background:${hex(r.accent)}"></i>
+        <div class="info">
+          <div class="why">${escapeHtml(r.why)}</div>
+          <div class="meta">${escapeHtml(r.project)} · ${ago(r.ts)}</div>
+        </div>
+        <div class="amt">-${formatTokens(r.tokens)}</div>
+      </div>`
+      )
+      .join('')
   }
 
   setStats(stats) {
@@ -694,6 +784,15 @@ export class Hud {
     el.classList.toggle('open', open)
   }
 
+  toggleReceipts(force) {
+    const el = this.$('.receipts')
+    const open = force ?? !el.classList.contains('open')
+    el.classList.toggle('open', open)
+    // The row list is the expensive part, so it is only ever built while actually visible —
+    // opening is exactly when the cached data last handed to `setReceipts` might be stale.
+    if (open) this._renderReceipts()
+  }
+
   /**
    * Dismiss everything. This is the mode the game is really meant to be left in — the
    * colony carries its own state above the astronauts' heads, so the panels are for
@@ -751,6 +850,12 @@ function chips(items, current, onPick, registry) {
 }
 
 const hex = (n) => '#' + (n >>> 0).toString(16).padStart(6, '0').slice(-6)
+
+const TOKEN_FORMAT = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 })
+/** Compact like the pay popups' own numbers — a raw token count is not a headline. */
+const formatTokens = (n) => TOKEN_FORMAT.format(Math.abs(n))
+const signedTokens = (n) => (n < 0 ? '-' : '') + formatTokens(n)
+
 /**
  * Eye colours are authored above 1.0 so the bloom pass catches them in the scene. For the
  * card they are normalised by the brightest channel — which keeps the hue the astronaut
@@ -838,6 +943,12 @@ const TEMPLATE = `
   </header>
 
   <div class="stats"></div>
+
+  <button class="wallet" id="btn-wallet" title="View receipts">
+    ${ICON.coin}
+    <span class="amt">—</span>
+    <span class="lbl">tokens left</span>
+  </button>
 
   <div class="side-body">
     <div class="projects-pane">
@@ -942,6 +1053,22 @@ const TEMPLATE = `
     <div style="margin-top:18px;display:flex;justify-content:flex-end">
       <button class="btn primary" id="btn-help-close">Got it</button>
     </div>
+  </div>
+</div>
+
+<div class="receipts">
+  <div class="sheet panel">
+    <header>
+      <h2>${ICON.coin} Receipts</h2>
+      <button class="btn icon ghost" id="btn-close-receipts" title="Close">${ICON.close}</button>
+    </header>
+    <p class="sub">Every astronaut is paid in tokens the moment its thread actually spends them — real input, output and cache counts read straight off the transcript, not a simulation. This is where those payments went.</p>
+    <div class="wallet-summary">
+      <div class="cell"><span class="n" id="receipts-spent">0</span><span class="lbl">spent</span></div>
+      <div class="cell"><span class="n" id="receipts-budget">0</span><span class="lbl">budget</span></div>
+      <div class="cell remaining"><span class="n" id="receipts-remaining">0</span><span class="lbl">remaining</span></div>
+    </div>
+    <div class="receipt-list"></div>
   </div>
 </div>
 `

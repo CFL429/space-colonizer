@@ -21,6 +21,21 @@ export async function readHead(file, bytes) {
   }
 }
 
+/** Read the bytes from `start` up to (not including) `end` — the incremental counterpart
+ *  to `readHead`, for tailing a file that only ever grows. */
+export async function readRange(file, start, end) {
+  if (end <= start) return ''
+  const fh = await fsp.open(file, 'r')
+  try {
+    const len = end - start
+    const buf = Buffer.allocUnsafe(len)
+    const { bytesRead } = await fh.read(buf, 0, len, start)
+    return buf.subarray(0, bytesRead).toString('utf8')
+  } finally {
+    await fh.close()
+  }
+}
+
 /** Parse a JSONL blob, skipping the partial or malformed lines a live file always has. */
 export function jsonLines(text) {
   const out = []

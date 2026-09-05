@@ -60,6 +60,13 @@ let hoverId = null
 let statusCursor = 0
 let pendingSave = 0
 const hoverGround = new THREE.Vector3()
+/**
+ * A thread's `tokensSpent` as of the last poll, so the *next* one can tell how much just
+ * got spent rather than re-paying the astronaut its entire lifetime earnings. Starts empty
+ * on every load on purpose — a long-lived thread's full history should not read as one huge
+ * payout the moment the page opens.
+ */
+const tokensSeen = new Map()
 
 // ── actions the HUD can trigger ────────────────────────────────────────────────────────
 
@@ -571,6 +578,7 @@ function applyThreads(list) {
   const archivedSet = new Set(state.archived)
   const stats = colony.setThreads(list, archivedSet)
   hud.setStats(stats)
+  applyCurrency(list)
 
   legendProjects = colony.plotOrder
     .map((plot) => ({
@@ -599,6 +607,32 @@ function applyThreads(list) {
     state.plots = layout
     queueSave()
   }
+}
+
+/**
+ * Pay every astronaut whose thread spent tokens since the last poll, and refresh the wallet
+ * against the running total. `list` is every scanned thread, archived ones included — their
+ * transcripts are never deleted, so summing `tokensSpent` across all of them is a stable
+ * lifetime total rather than one that jumps around as threads come and go from the roster.
+ */
+function applyCurrency(list) {
+  let total = 0
+  const receipts = []
+  for (const t of list) {
+    const spent = t.tokensSpent || 0
+    total += spent
+    const prev = tokensSeen.get(t.id)
+    tokensSeen.set(t.id, spent)
+    if (prev !== undefined && spent > prev) colony.pay(t.id, spent - prev)
+
+    const plot = colony.plots.get(t.project)
+    for (const r of t.receipts || []) receipts.push({ ...r, project: t.project, accent: plot?.accent ?? 0x9b9aa3 })
+  }
+  receipts.sort((a, b) => b.ts - a.ts)
+
+  const budget = settings.get('tokenBudget')
+  hud.setWallet(budget - total, budget, total)
+  hud.setReceipts(receipts.slice(0, 200))
 }
 
 let polling = false
@@ -685,6 +719,7 @@ settings.onChange((changed, scope) => {
   colony.onSettingsChanged(changed, scope)
   if (changed.has('showFps')) hud.syncSettings()
   if (changed.has('maxAgents')) applyThreads(threads)
+  if (changed.has('tokenBudget')) applyCurrency(threads)
 })
 
 // ── frame ─────────────────────────────────────────────────────────────────────────────

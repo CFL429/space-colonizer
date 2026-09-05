@@ -15,7 +15,7 @@ import path from 'node:path'
 import os from 'node:os'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { exists, jsonLines, listDirs, listFiles, num, readHead } from '../lib/fsutil.mjs'
+import { exists, jsonLines, listDirs, listFiles, num, readHead, readRange } from '../lib/fsutil.mjs'
 
 const execFileAsync = promisify(execFile)
 const HOME = os.homedir()
@@ -158,6 +158,103 @@ async function transcriptMeta(entry) {
   return meta
 }
 
+/** How many of a thread's most recent pay events to keep — enough for a real look back
+ *  through the receipts page without shipping a whole transcript's worth on every poll. */
+const RECEIPT_CAP = 40
+
+function truncate(s, n) {
+  const t = String(s || '').replace(/\s+/g, ' ').trim()
+  return t.length > n ? t.slice(0, n - 1) + '…' : t
+}
+
+/** `mcp__some-server__toolName` -> `toolName`. The server segment is the connector, not the
+ *  action — keeping it would make every MCP call in a receipt read as the same noun. */
+function prettyToolName(name) {
+  if (!name.startsWith('mcp__')) return name
+  const parts = name.split('__')
+  return parts.length >= 3 ? parts[parts.length - 1] : name
+}
+
+/** A one-line gloss for what a turn spent its tokens doing, favouring the tool's own
+ *  `description` (this game's own tools carry one; Claude Code's built-ins do too for Bash)
+ *  before falling back to whichever argument identifies the target. */
+function describeToolUse(rawName, input) {
+  input = input || {}
+  const name = prettyToolName(rawName)
+  if (typeof input.description === 'string' && input.description) return truncate(input.description, 70)
+  if (input.command) return `${name}: ${truncate(input.command, 60)}`
+  if (input.file_path) return `${name} ${truncate(input.file_path.split(/[\\/]/).pop(), 50)}`
+  if (input.path) return `${name} ${truncate(input.path.split(/[\\/]/).pop(), 50)}`
+  if (input.pattern) return `${name} "${truncate(input.pattern, 40)}"`
+  if (input.url) return `${name} ${truncate(input.url, 50)}`
+  if (input.query) return `${name} "${truncate(input.query, 40)}"`
+  return name
+}
+
+/**
+ * Running token ledgers, one per transcript, read incrementally as each file grows —
+ * re-parsing a long-lived session's transcript from byte zero on every 15-second poll
+ * would get slower for exactly the threads worth watching most.
+ *
+ * Keyed by session id rather than kept on the scan entry, so a ledger survives from one
+ * poll's `scanTranscripts()` to the next.
+ */
+const usageCache = new Map()
+
+/**
+ * A thread's lifetime token spend and its most recent pay events, both real numbers pulled
+ * straight from the transcript's own per-turn `usage` blocks — the same input/output/cache
+ * counts the API actually billed. `total` only ever grows for a file that only ever grows,
+ * so summing it across every scanned thread (including archived ones, whose transcripts are
+ * never deleted) is a stable lifetime total without any separate ledger to maintain.
+ */
+async function sessionUsage(entry) {
+  let cache = usageCache.get(entry.id)
+  if (!cache) {
+    cache = { offset: 0, tail: '', total: 0, receipts: [] }
+    usageCache.set(entry.id, cache)
+  }
+  // The file shrank or was replaced — a rewritten transcript is not this ledger's to guess
+  // about, so start over rather than reading a negative-length range.
+  if (entry.size < cache.offset) {
+    cache.offset = 0
+    cache.tail = ''
+    cache.total = 0
+    cache.receipts = []
+  }
+  if (entry.size <= cache.offset) return cache
+
+  let chunk
+  try {
+    chunk = await readRange(entry.file, cache.offset, entry.size)
+  } catch {
+    return cache
+  }
+  const text = cache.tail + chunk
+  const cut = text.lastIndexOf('\n')
+  const complete = cut === -1 ? '' : text.slice(0, cut + 1)
+  cache.tail = cut === -1 ? text : text.slice(cut + 1)
+  cache.offset = entry.size - cache.tail.length
+
+  for (const r of jsonLines(complete)) {
+    const usage = r?.message?.usage
+    if (r.type !== 'assistant' || !usage) continue
+    const tokens = num(usage.input_tokens) + num(usage.output_tokens) + num(usage.cache_creation_input_tokens) + num(usage.cache_read_input_tokens)
+    cache.total += tokens
+    if (tokens <= 0) continue
+
+    // One turn is one content block in this transcript format — thinking, a tool call, or
+    // a reply — so the block that actually did something is the whole story for the turn.
+    const content = r.message.content || []
+    const toolUse = content.find((p) => p?.type === 'tool_use')
+    const text_ = content.find((p) => p?.type === 'text' && p.text)
+    const why = toolUse ? describeToolUse(toolUse.name, toolUse.input) : text_ ? truncate(text_.text, 90) : 'Thinking'
+    cache.receipts.push({ ts: Date.parse(r.timestamp) || Date.now(), tokens, why })
+  }
+  if (cache.receipts.length > RECEIPT_CAP) cache.receipts.splice(0, cache.receipts.length - RECEIPT_CAP)
+  return cache
+}
+
 /**
  * Sessions with a CLI process actually alive right now. The registry keeps files for
  * processes that have exited, so every pid is probed before it counts.
@@ -271,6 +368,7 @@ async function scanThreads() {
     const cwd = s.cwd || s.originCwd || ''
     const { projectPath, project, worktree } = projectOf(cwd, s.originCwd)
     const meta = entry ? await transcriptMeta(entry) : null
+    const usage = entry ? await sessionUsage(entry) : null
 
     add({
       id: cliSessionId || s.sessionId,
@@ -299,6 +397,8 @@ async function scanThreads() {
       archived: s.isArchived === true || s.isArchived === 'True',
       hasTranscript: Boolean(entry),
       sizeBytes: entry?.size || 0,
+      tokensSpent: usage?.total || 0,
+      receipts: usage?.receipts || [],
       source: 'desktop',
     })
   }
@@ -307,6 +407,7 @@ async function scanThreads() {
   for (const [id, entry] of transcripts) {
     if (claimed.has(id)) continue
     const meta = await transcriptMeta(entry)
+    const usage = await sessionUsage(entry)
     const cwd = meta.cwd || decodeProjectDir(path.basename(entry.projectDir))
     const { projectPath, project, worktree } = projectOf(cwd, '')
     add({
@@ -336,6 +437,8 @@ async function scanThreads() {
       archived: false,
       hasTranscript: true,
       sizeBytes: entry.size,
+      tokensSpent: usage.total,
+      receipts: usage.receipts,
       source: 'cli',
     })
   }
