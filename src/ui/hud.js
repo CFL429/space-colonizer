@@ -46,6 +46,8 @@ const ICON = {
   orbit: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="4"/><ellipse cx="12" cy="12" rx="10.2" ry="4.6" transform="rotate(-24 12 12)"/><circle cx="21" cy="8.2" r="1.5" fill="currentColor" stroke="none"/></svg>`,
   meteor: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="14.5" r="5"/><path d="M12 2.6v3.4M5.9 5.9l2.2 2.5M18.1 5.9l-2.2 2.5"/></svg>`,
   coin: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="8.2"/><path d="M9.3 14.6c.4 1 1.4 1.6 2.7 1.6 1.7 0 2.8-.8 2.8-2 0-1.1-1-1.6-2.8-2-1.8-.4-2.8-.9-2.8-2 0-1.2 1.1-2 2.8-2 1.3 0 2.3.6 2.7 1.6"/><path d="M12 5.6v1.1M12 17.3v1.1"/></svg>`,
+  flask: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h6"/><path d="M10 2v6.3L4.6 17.9A2 2 0 0 0 6.3 21h11.4a2 2 0 0 0 1.7-3.1L14 8.3V2"/><path d="M7.3 14.5h9.4"/></svg>`,
+  chevron: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>`,
 }
 
 /**
@@ -70,6 +72,9 @@ export class Hud {
     this.actions = actions
     this.visible = true
     this._last = {}
+    /** Which test environments are collapsed — purely a panel-layout preference, so it lives
+     *  here rather than round-tripping through main.js on every render. */
+    this._collapsedEnvs = new Set()
 
     this.el = document.createElement('div')
     this.el.className = 'hud'
@@ -80,6 +85,7 @@ export class Hud {
 
     this._buildStats()
     this._buildSettings()
+    this._buildTestEnvPanel()
     this._buildAvatar()
     this._wire()
     this.syncSettings()
@@ -252,19 +258,23 @@ export class Hud {
       )
     )
     body.appendChild(economy)
+  }
 
-    // Test environment — one or more fake platforms, each with its own crew, standing in
-    // for the real scan while switched on. Spawning, paying and destroying a test astronaut
-    // runs the exact same mechanics a real one does, so a UI change can be checked without
-    // waiting for something real to land in the right state.
-    const test = group('Test environment')
+  /**
+   * The test environment lives in its own panel rather than under Settings: it is a
+   * different mode of the whole colony, not a knob on the real one, and it wants far more
+   * room per environment than a settings row leaves it.
+   */
+  _buildTestEnvPanel() {
+    const body = this.$('.test-env-panel .body')
+
     const blurb = document.createElement('p')
     blurb.className = 'test-blurb'
     blurb.textContent =
       'Simulate one or more fake platforms, each with its own crew. While the switch below is on, they stand in for every real thread rather than alongside them.'
-    test.appendChild(blurb)
+    body.appendChild(blurb)
 
-    test.appendChild(
+    body.appendChild(
       this._toggle(
         'Simulate test environment',
         'testEnvEnabled',
@@ -277,11 +287,11 @@ export class Hud {
     const addEnvBtn = mkBtn('+ New environment', () => this.actions.testAddEnv?.())
     addEnvBtn.classList.add('primary')
     addEnvRow.appendChild(addEnvBtn)
-    test.appendChild(addEnvRow)
+    body.appendChild(addEnvRow)
 
     this._testEnvList = document.createElement('div')
     this._testEnvList.className = 'test-env-list'
-    test.appendChild(this._testEnvList)
+    body.appendChild(this._testEnvList)
     this.setTestEnvironments([])
 
     const dialogRow = document.createElement('div')
@@ -292,13 +302,11 @@ export class Hud {
       mkBtn('Help sheet', () => this.actions.testHelp?.()),
       mkBtn('Receipts sheet', () => this.actions.testReceipts?.())
     )
-    test.appendChild(dialogRow)
+    body.appendChild(dialogRow)
 
     const clearBtn = mkBtn('Clear everything', () => this.actions.testClearAll?.())
     clearBtn.classList.add('danger', 'test-clear')
-    test.appendChild(clearBtn)
-
-    body.appendChild(test)
+    body.appendChild(clearBtn)
   }
 
   _row(label, hint) {
@@ -420,6 +428,8 @@ export class Hud {
 
     on('#btn-settings', 'click', () => this.toggleSettings())
     on('#btn-close-settings', 'click', () => this.toggleSettings(false))
+    on('#btn-testenv', 'click', () => this.toggleTestEnv())
+    on('#btn-close-testenv', 'click', () => this.toggleTestEnv(false))
     on('#btn-hide', 'click', () => this.toggleUi())
     on('#btn-help', 'click', () => this.toggleHelp())
     on('#btn-shot', 'click', () => this.actions.screenshot?.())
@@ -528,8 +538,23 @@ export class Hud {
     const card = document.createElement('div')
     card.className = 'test-env'
 
+    const collapsed = this._collapsedEnvs.has(env.id)
+    const list = document.createElement('div')
+    list.className = 'test-list'
+    list.hidden = collapsed
+
     const head = document.createElement('div')
     head.className = 'test-env-head'
+    const collapseBtn = iconBtn(ICON.chevron, collapsed ? 'Show this crew' : 'Hide this crew', () => {
+      const nowCollapsed = !list.hidden
+      list.hidden = nowCollapsed
+      collapseBtn.classList.toggle('collapsed', nowCollapsed)
+      collapseBtn.title = nowCollapsed ? 'Show this crew' : 'Hide this crew'
+      if (nowCollapsed) this._collapsedEnvs.add(env.id)
+      else this._collapsedEnvs.delete(env.id)
+    })
+    collapseBtn.classList.add('test-env-collapse')
+    collapseBtn.classList.toggle('collapsed', collapsed)
     const nameInput = document.createElement('input')
     nameInput.type = 'text'
     nameInput.className = 'test-env-name'
@@ -542,7 +567,7 @@ export class Hud {
     const removeEnvBtn = iconBtn(ICON.close, 'Remove this environment and everyone on it', () =>
       this.actions.testRemoveEnv?.(env.id)
     )
-    head.append(nameInput, count, removeEnvBtn)
+    head.append(collapseBtn, nameInput, count, removeEnvBtn)
     card.appendChild(head)
 
     const spawnRow = document.createElement('div')
@@ -556,8 +581,6 @@ export class Hud {
     spawnRow.append(modelSel, statusSel, spawnBtn)
     card.appendChild(spawnRow)
 
-    const list = document.createElement('div')
-    list.className = 'test-list'
     if (!env.threads.length) {
       list.innerHTML = `<p class="empty">No agents yet — spawn one above.</p>`
     } else {
@@ -896,12 +919,31 @@ export class Hud {
     this.$('#btn-orbit').setAttribute('aria-pressed', String(Boolean(on)))
   }
 
+  /** Settings and the test environment are tabs on the same slot — opening one closes the
+   *  other rather than stacking, the same way a repo's sidebar and its all-repos list are
+   *  never both on screen. */
   toggleSettings(force) {
     const panel = this.$('.settings')
     const open = force ?? panel.classList.contains('closed')
+    if (open) this.toggleTestEnv(false)
     panel.classList.toggle('closed', !open)
     this.$('#btn-settings').setAttribute('aria-pressed', String(open))
-    // Both live in the same slot on the right; the sidebar steps aside rather than hides.
+    this._syncSideShift()
+  }
+
+  toggleTestEnv(force) {
+    const panel = this.$('.test-env-panel')
+    const open = force ?? panel.classList.contains('closed')
+    if (open) this.toggleSettings(false)
+    panel.classList.toggle('closed', !open)
+    this.$('#btn-testenv').setAttribute('aria-pressed', String(open))
+    this._syncSideShift()
+  }
+
+  /** Both live in the same slot on the right; the sidebar steps aside rather than hides,
+   *  for whichever of the two tabs is actually open. */
+  _syncSideShift() {
+    const open = !this.$('.settings').classList.contains('closed') || !this.$('.test-env-panel').classList.contains('closed')
     this.$('.side').classList.toggle('shifted', open)
   }
 
@@ -1098,6 +1140,7 @@ const TEMPLATE = `
     <button class="btn icon ghost" id="btn-help" title="Help (?)">${ICON.help}</button>
     <button class="btn icon ghost" id="btn-hide" title="Hide all UI (H)">${ICON.eye}</button>
     <button class="btn icon ghost" id="btn-settings" title="Settings (S)" aria-pressed="false">${ICON.settings}</button>
+    <button class="btn icon ghost" id="btn-testenv" title="Test environment (T)" aria-pressed="false">${ICON.flask}</button>
   </header>
 
   <div class="stats"></div>
@@ -1151,6 +1194,11 @@ const TEMPLATE = `
   <div class="body"></div>
 </div>
 
+<div class="test-env-panel panel closed">
+  <header><span class="title">${ICON.flask} Test environment</span> <button class="btn icon ghost" id="btn-close-testenv" title="Close">${ICON.close}</button></header>
+  <div class="body"></div>
+</div>
+
 <div class="thread-pop panel">
   <i class="nib"></i>
   <div class="top">
@@ -1187,6 +1235,7 @@ const TEMPLATE = `
         <div class="k"><span>Reset view</span><kbd>0</kbd></div>
         <div class="k"><span>Hide all UI</span><kbd>H</kbd> <kbd>${IS_MAC ? '⌘' : 'Ctrl'}\\</kbd></div>
         <div class="k"><span>Settings</span><kbd>S</kbd></div>
+        <div class="k"><span>Test environment</span><kbd>T</kbd></div>
         <div class="k"><span>Screenshot</span><kbd>P</kbd></div>
       </div>
       <div>

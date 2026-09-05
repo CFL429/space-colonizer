@@ -600,6 +600,10 @@ window.addEventListener('keydown', (e) => {
     case 'S':
       hud.toggleSettings()
       break
+    case 't':
+    case 'T':
+      hud.toggleTestEnv()
+      break
     case 'n':
     case 'N':
       actions.focusStatus('waiting')

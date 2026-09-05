@@ -216,9 +216,12 @@ body {
   margin: 4px 6px;
 }
 
-/* ── settings ────────────────────────────────────────────────────────────────────── */
+/* ── settings & test environment ────────────────────────────────────────────────── */
+/* Two tabs sharing one slot — Settings tunes the real colony, the test environment panel
+   swaps it out entirely, so they get identical framing and never appear at once. */
 
-.settings {
+.settings,
+.test-env-panel {
   position: absolute;
   /* Level with the sidebar it sits beside. The old 78px was clearing a top bar that no
      longer exists. */
@@ -232,15 +235,18 @@ body {
   transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1), opacity 200ms ease;
 }
 
-.settings.closed {
+.settings.closed,
+.test-env-panel.closed {
   transform: translateX(calc(100% + 20px));
   opacity: 0;
   pointer-events: none;
 }
 
-.settings header {
+.settings header,
+.test-env-panel header {
   display: flex;
   align-items: center;
+  gap: 8px;
   justify-content: space-between;
   padding: 14px 16px 10px;
   font-weight: 650;
@@ -248,7 +254,21 @@ body {
   flex: none;
 }
 
-.settings .body {
+.test-env-panel header .title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.test-env-panel header svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  color: var(--accent);
+}
+
+.settings .body,
+.test-env-panel .body {
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 0 16px 16px;
@@ -257,11 +277,13 @@ body {
   scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
 }
 
-.settings .body::-webkit-scrollbar {
+.settings .body::-webkit-scrollbar,
+.test-env-panel .body::-webkit-scrollbar {
   width: 8px;
 }
 
-.settings .body::-webkit-scrollbar-thumb {
+.settings .body::-webkit-scrollbar-thumb,
+.test-env-panel .body::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.14);
   border-radius: 8px;
 }
@@ -481,6 +503,14 @@ body {
   height: 14px;
 }
 
+.test-env-collapse svg {
+  transition: transform 160ms ease;
+}
+
+.test-env-collapse.collapsed svg {
+  transform: rotate(-90deg);
+}
+
 .test-spawn,
 .test-dialogs {
   flex-wrap: wrap;
@@ -509,6 +539,10 @@ body {
   flex-direction: column;
   gap: 6px;
   margin-bottom: 10px;
+}
+
+.test-list[hidden] {
+  display: none;
 }
 
 .test-list .empty {
