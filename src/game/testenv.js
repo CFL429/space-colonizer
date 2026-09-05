@@ -1,6 +1,6 @@
 /**
  * Synthetic threads for exercising the UI on demand — a status, a model tag, a payout
- * popup, a meteor strike — without waiting for a real agent thread to be in the right state.
+ * popup — without waiting for a real agent thread to be in the right state.
  *
  * A spawned thread is shaped exactly like one `server/harnesses/*` would hand back, so it
  * flows through `Colony.setThreads` and `applyCurrency` unmodified: the astronaut that walks
@@ -57,8 +57,7 @@ export function renameEnvironment(id, name) {
   }
 }
 
-/** Drops the environment and every thread standing in it, with no meteor theatrics — that
- *  flourish is for taking out one astronaut at a time, not for striking a whole zone. */
+/** Drops the environment and every thread standing in it. */
 export function removeEnvironment(id) {
   environments.delete(id)
   for (const [tid, thread] of threads) {

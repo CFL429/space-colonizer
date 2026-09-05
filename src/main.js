@@ -64,9 +64,6 @@ let threads = []
 /** The last real scan on its own, so a test-environment change can be re-merged with it
  *  without waiting for the next poll. */
 let scannedThreads = []
-/** Test astronauts mid meteor-strike: watched every frame so the fake thread is dropped for
- *  good the instant its building is actually gone, rather than on a timer that might race it. */
-const pendingTestDestroy = new Set()
 /** Last legend built for the bottom bar, kept so the open zone's chip can light up between polls. */
 let legendProjects = []
 /** The zone layout as last written to the colony file, so an unchanged map is not re-saved. */
@@ -250,39 +247,6 @@ const actions = {
     }
   },
 
-  destroyThread: async () => {
-    const thread = threads.find((t) => t.id === selectedId)
-    if (!thread) return
-    if (thread.__test) {
-      actions.testRemove(thread.id)
-      select(null, {})
-      return
-    }
-    // Belt and braces alongside the HUD's own disabled state: a thread that so much as
-    // looks alive is not this button's business, however it got clicked.
-    const status = statusFor(thread)
-    if (status !== 'idle' && status !== 'sleeping') {
-      hud.toast('Only an idle or dormant thread can be destroyed', 'err')
-      return
-    }
-    if (!colony.destroyThread(thread.id)) return
-    select(null, {})
-    try {
-      const res = await archiveThread(thread, true)
-      state.archived = [...new Set([...state.archived, thread.id])]
-      state.archivedAt = { ...state.archivedAt, [thread.id]: Date.now() }
-      queueSave()
-      applyThreads(threads)
-      hud.toast(
-        res.harnessRecord === false
-          ? `Destroyed here (no ${thread.harnessName || 'harness'} record for it)`
-          : 'Destroyed — the pad is clear'
-      )
-    } catch (err) {
-      hud.toast(err.message || 'Could not destroy that pad', 'err')
-    }
-  },
-
   uiVisibility: (visible) => colony.setUiVisible(visible),
 
   setProjectAccent: (name, accent) => {
@@ -313,8 +277,7 @@ const actions = {
     refreshTestEnv()
   },
 
-  /** Drops a whole fake platform and everyone standing on it — an immediate teardown, not
-   *  one meteor per astronaut, the same way clearing everything works below. */
+  /** Drops a whole fake platform and everyone standing on it — an immediate teardown. */
   testRemoveEnv: (id) => {
     removeEnvironment(id)
     refreshTestEnv()
@@ -329,18 +292,12 @@ const actions = {
     if (payTest(id) != null) refreshTestEnv()
   },
 
-  /** Meteor-strike a test pad exactly like a real destroy, if it is standing; otherwise
-   *  there is nothing to watch, so it is just dropped. */
   testRemove: (id) => {
-    if (colony.destroyThread(id)) pendingTestDestroy.add(id)
-    else {
-      removeTest(id)
-      refreshTestEnv()
-    }
+    removeTest(id)
+    refreshTestEnv()
   },
 
   testClearAll: () => {
-    pendingTestDestroy.clear()
     clearAllTest()
     refreshTestEnv()
   },
@@ -848,17 +805,6 @@ engine.add({
     colony.update(dt, elapsed, rig.target)
     // Whatever the camera is orbiting is what should be in focus.
     engine.setFocusDistance(rig.distance)
-
-    // A test pad's meteor lands on the world's own clock, not on any poll — catch the
-    // moment its building is actually gone so the fake thread does not outlive it.
-    if (pendingTestDestroy.size) {
-      for (const id of pendingTestDestroy) {
-        if (colony.buildings.has(id)) continue
-        pendingTestDestroy.delete(id)
-        removeTest(id)
-        refreshTestEnv()
-      }
-    }
 
     if (selectedId) {
       hud.updateAvatar(colony.astronauts.faceTexture.image)

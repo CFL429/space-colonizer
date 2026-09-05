@@ -44,19 +44,10 @@ const ICON = {
   copy: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>`,
   locate: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="7.6"/><path d="M12 1.8v2.6M12 19.6v2.6M1.8 12h2.6M19.6 12h2.6"/></svg>`,
   orbit: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="4"/><ellipse cx="12" cy="12" rx="10.2" ry="4.6" transform="rotate(-24 12 12)"/><circle cx="21" cy="8.2" r="1.5" fill="currentColor" stroke="none"/></svg>`,
-  meteor: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="14.5" r="5"/><path d="M12 2.6v3.4M5.9 5.9l2.2 2.5M18.1 5.9l-2.2 2.5"/></svg>`,
   coin: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="8.2"/><path d="M9.3 14.6c.4 1 1.4 1.6 2.7 1.6 1.7 0 2.8-.8 2.8-2 0-1.1-1-1.6-2.8-2-1.8-.4-2.8-.9-2.8-2 0-1.2 1.1-2 2.8-2 1.3 0 2.3.6 2.7 1.6"/><path d="M12 5.6v1.1M12 17.3v1.1"/></svg>`,
   flask: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h6"/><path d="M10 2v6.3L4.6 17.9A2 2 0 0 0 6.3 21h11.4a2 2 0 0 0 1.7-3.1L14 8.3V2"/><path d="M7.3 14.5h9.4"/></svg>`,
   chevron: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>`,
 }
-
-/**
- * Statuses safe to destroy without risking a thread somebody is actually using — the ones
- * that mean nothing is currently happening. Anything running, waiting on you, stuck, or
- * freshly shipped could still be looked at any moment, and losing it to a meteor because it
- * merely *looked* orphaned is worse than the ghost astronaut this button exists to clear.
- */
-const DESTROY_SAFE = new Set(['idle', 'sleeping'])
 
 const STAT_DEFS = [
   { key: 'working', label: 'building', cls: 'working' },
@@ -440,7 +431,6 @@ export class Hud {
     on('#btn-time', 'click', () => this.actions.cycleTime?.())
     on('#btn-open', 'click', () => this.actions.openThread?.())
     on('#btn-archive', 'click', () => this.actions.archiveThread?.())
-    on('#btn-destroy', 'click', () => this.actions.destroyThread?.())
     on('#btn-deselect', 'click', () => this.actions.select?.(null))
     on('#btn-new-session', 'click', () => this.actions.newConversation?.())
     on('#btn-reveal', 'click', () => this.actions.revealProject?.())
@@ -606,7 +596,7 @@ export class Hud {
       (t.model ? `<span class="tag">${escapeHtml(shortModel(t.model))}</span>` : '') +
       `</span>`
     const payBtn = iconBtn(ICON.coin, 'Pay a random amount', () => this.actions.testPay?.(t.id))
-    const removeBtn = iconBtn(ICON.meteor, 'Meteor-strike this pad', () => this.actions.testRemove?.(t.id))
+    const removeBtn = iconBtn(ICON.close, 'Remove this test agent', () => this.actions.testRemove?.(t.id))
     removeBtn.classList.add('danger')
     row.append(info, payBtn, removeBtn)
     return row
@@ -771,13 +761,6 @@ export class Hud {
     // often is how a HUD starts costing frames.
     this._cardSize = { w: card.offsetWidth, h: card.offsetHeight }
     this.$('#btn-open').disabled = thread.canOpen === false
-
-    const destroyBtn = this.$('#btn-destroy')
-    const destroySafe = DESTROY_SAFE.has(agent.status)
-    destroyBtn.disabled = !destroySafe
-    destroyBtn.title = destroySafe
-      ? 'Destroy — drop a meteor on the pad, so a new agent can take its place'
-      : `Destroy — only an idle or dormant thread can be destroyed (this one is ${status.toLowerCase()})`
   }
 
   /**
@@ -1220,7 +1203,6 @@ const TEMPLATE = `
   <div class="pair">
     <button class="btn primary" id="btn-open" title="Open this thread in the harness it came from (Enter)">${ICON.open} Open</button>
     <button class="btn" id="btn-archive" title="Archive — this astronaut walks back to the ship (A)">${ICON.archive} Archive</button>
-    <button class="btn icon danger" id="btn-destroy" title="Destroy — drop a meteor on the pad, so a new agent can take its place">${ICON.meteor}</button>
   </div>
 </div>
 

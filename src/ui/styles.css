@@ -873,11 +873,6 @@ body {
   height: 34px;
 }
 
-.thread-pop .pair .btn.icon {
-  flex: none;
-  width: 34px;
-}
-
 .progress {
   height: 5px;
   border-radius: 3px;
